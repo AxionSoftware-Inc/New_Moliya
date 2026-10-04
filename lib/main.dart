@@ -107,6 +107,20 @@ class _FinanceMainShellState extends State<FinanceMainShell> {
     if (mounted) setState(() {});
   }
 
+  void _openAiTxAssistant(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FinanceAiAssistantSheet(
+        pluginManager: widget.pluginManager,
+        service: widget.service,
+        security: _security,
+        onTxCreated: () => setState(() => _currentIndex = 0),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final txCount = widget.service.store.all.where((e) => e.status == 'tx_income' || e.status == 'tx_expense').length;
@@ -162,6 +176,13 @@ class _FinanceMainShellState extends State<FinanceMainShell> {
           ],
         ),
         actions: [
+          // Plagin: O'zbekcha AI Assistent
+          if (widget.pluginManager.isPluginActive('plugin_uzbek_ai'))
+            IconButton(
+              icon: const Icon(Icons.auto_awesome, color: Colors.purple),
+              tooltip: "O'zbekcha AI Kassa Amali",
+              onPressed: () => _openAiTxAssistant(context),
+            ),
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -188,6 +209,7 @@ class _FinanceMainShellState extends State<FinanceMainShell> {
           FinanceCashflowTab(
             service: widget.service,
             security: _security,
+            pluginManager: widget.pluginManager,
             onGoToCreate: () => setState(() => _currentIndex = 1),
           ),
           // Tab 1: Tezkor Kirim / Chiqim (Core Create Form)
@@ -242,11 +264,13 @@ class FinanceCashflowTab extends StatefulWidget {
     required this.service,
     required this.security,
     required this.onGoToCreate,
+    this.pluginManager,
   });
 
   final FinanceService service;
   final SecurityManager security;
   final VoidCallback onGoToCreate;
+  final PluginManager? pluginManager;
 
   @override
   State<FinanceCashflowTab> createState() => _FinanceCashflowTabState();
@@ -397,6 +421,59 @@ class _FinanceCashflowTabState extends State<FinanceCashflowTab> {
             ],
           ),
         ),
+
+        // Plagin: P&L Tahlil va Diagramma Slot
+        if (widget.pluginManager?.isPluginActive('plugin_pnl_analytics') == true) ...[
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.green.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.pie_chart, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'P&L Moliyaviy Tahlil (Plagin)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Rentabellik: ${totalIncome > 0 ? ((balance / totalIncome) * 100).toInt() : 0}%',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.green),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Sof Foyda: ${balance.toInt()} so\'m',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: balance >= 0 ? Colors.green.shade800 : Colors.red.shade800,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Xarajat nisbati: ${totalIncome > 0 ? ((totalExpense / totalIncome) * 100).toInt() : 0}%',
+                      style: const TextStyle(fontSize: 11, color: Colors.blueGrey),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
 
         // Qidirish va Filtrlar
         Padding(
@@ -960,10 +1037,43 @@ class _FinanceProfileTabState extends State<FinanceProfileTab> {
             ),
             child: Column(
               children: plugins.map((plugin) {
+                final isConfigurable = plugin.id == 'plugin_ecosystem_bridge' || plugin.id == 'plugin_uzbek_ai';
                 return SwitchListTile(
                   dense: true,
-                  secondary: const Icon(Icons.extension_outlined, color: Colors.purple),
-                  title: Text(plugin.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  secondary: Icon(
+                    plugin.id == 'plugin_uzbek_ai'
+                        ? Icons.auto_awesome
+                        : (plugin.id == 'plugin_pnl_analytics' ? Icons.pie_chart : (plugin.id == 'plugin_debt_ledger' ? Icons.handshake : (plugin.id == 'plugin_ecosystem_bridge' ? Icons.sync_alt : Icons.extension_outlined))),
+                    color: Colors.green.shade700,
+                  ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(plugin.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      ),
+                      if (isConfigurable)
+                        InkWell(
+                          onTap: () => _showPluginConfigDialog(context, plugin),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.green.shade300),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.tune, size: 11, color: Colors.green),
+                                SizedBox(width: 3),
+                                Text('Sozlash', style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   subtitle: Text(plugin.description, style: const TextStyle(fontSize: 11)),
                   value: plugin.isEnabled,
                   onChanged: (val) async {
@@ -979,4 +1089,374 @@ class _FinanceProfileTabState extends State<FinanceProfileTab> {
       ),
     );
   }
+
+  void _showPluginConfigDialog(BuildContext context, EcosystemPlugin plugin) {
+    showDialog(
+      context: context,
+      builder: (ctx) => FinancePluginConfigDialog(
+        plugin: plugin,
+        pluginManager: widget.pluginManager,
+        onSaved: () => setState(() {}),
+      ),
+    );
+  }
 }
+
+// ============================================================================
+// PLAGIN: MOLIYA AI AMAL KIRITISH (MODAL BOTTOM SHEET)
+// ============================================================================
+class FinanceAiAssistantSheet extends StatefulWidget {
+  const FinanceAiAssistantSheet({
+    super.key,
+    required this.pluginManager,
+    required this.service,
+    required this.security,
+    required this.onTxCreated,
+  });
+
+  final PluginManager pluginManager;
+  final FinanceService service;
+  final SecurityManager security;
+  final VoidCallback onTxCreated;
+
+  @override
+  State<FinanceAiAssistantSheet> createState() => _FinanceAiAssistantSheetState();
+}
+
+class _FinanceAiAssistantSheetState extends State<FinanceAiAssistantSheet> {
+  final _controller = TextEditingController(
+    text: "Alidan 5 000 000 so'm qarz qaytdi, kassaga kirim qil",
+  );
+  bool _isLoading = false;
+  Map<String, dynamic>? _result;
+
+  void _analyze() {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    final amount = UzbekNlp.parseNumber(text).toDouble();
+    final lower = text.toLowerCase();
+    final isExpense = lower.contains('chiqim') || lower.contains('xarajat') || lower.contains('to\'lov') || lower.contains('oylik') || lower.contains('ijara');
+
+    String party = 'Kassir';
+    final fromMatch = RegExp(r'([A-ZА-ЯЁ][a-zа-яё]+)dan').firstMatch(text);
+    final toMatch = RegExp(r'([A-ZА-ЯЁ][a-zа-яё]+)ga').firstMatch(text);
+    if (fromMatch != null) {
+      party = fromMatch.group(1) ?? 'Mijoz';
+    } else if (toMatch != null) {
+      party = toMatch.group(1) ?? 'Xodim';
+    }
+
+    String category = 'boshqa';
+    if (lower.contains('qarz') || lower.contains('nasiya')) {
+      category = 'qarz_qaytarish';
+    } else if (lower.contains('oylik') || lower.contains('bonus')) {
+      category = 'Oylik/Bonus';
+    } else if (lower.contains('ijara')) {
+      category = 'ijara';
+    } else if (lower.contains('savdo')) {
+      category = 'savdo';
+    }
+
+    setState(() {
+      _isLoading = false;
+      _result = {
+        'is_expense': isExpense,
+        'amount': amount > 0 ? amount : 1000000.0,
+        'party': party,
+        'category': category,
+        'note': text,
+      };
+    });
+  }
+
+  void _confirmAndCreate() async {
+    if (_result == null) return;
+
+    final isExpense = _result!['is_expense'] as bool;
+    final toolName = isExpense ? 'finance_expense' : 'finance_income';
+    final tool = widget.service.schema.tools.firstWhere((t) => t.name == toolName);
+
+    if (isExpense) {
+      await tool.handler({
+        'amount': _result!['amount'],
+        'to': _result!['party'],
+        'category': _result!['category'],
+        'note': _result!['note'],
+        'authorized_by': widget.security.currentUser.name,
+      });
+    } else {
+      await tool.handler({
+        'amount': _result!['amount'],
+        'from': _result!['party'],
+        'category': _result!['category'],
+        'note': _result!['note'],
+        'cashier': widget.security.currentUser.name,
+      });
+    }
+
+    if (mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kassaga ${_result!['amount'].toInt()} so\'m ${isExpense ? "chiqim" : "kirim"} qilindi!')),
+      );
+      widget.onTxCreated();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: Colors.purple, size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Kassa Amali Kiritish',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Tabiiy tilda yozing, AI kirim yoki chiqimni avtomatik toifalaydi',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  label: const Text('Alidan 5 mln qarz qaytdi', style: TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    _controller.text = "Alidan 5 000 000 so'm qarz qaytdi, kassaga kirim qil";
+                    _analyze();
+                  },
+                ),
+                ActionChip(
+                  label: const Text('Ofis ijarasiga 2 mln chiqim', style: TextStyle(fontSize: 11)),
+                  onPressed: () {
+                    _controller.text = "Ofis ijarasi uchun 2 000 000 so'm xarajat chiqim yoz";
+                    _analyze();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: _controller,
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: 'Masalan: Alidan 5 mln qarz qaytdi yoki Ijaraga 2 mln chiqim',
+                filled: true,
+                fillColor: const Color(0xFFF8F9FA),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton.icon(
+                onPressed: _isLoading ? null : _analyze,
+                icon: const Icon(Icons.psychology, size: 18),
+                label: const Text('AI Kassa Buyrug\'ini Tahlil Qilish'),
+                style: FilledButton.styleFrom(backgroundColor: Colors.purple),
+              ),
+            ),
+
+            if (_result != null) ...[
+              const SizedBox(height: 16),
+              Card(
+                elevation: 0,
+                color: (_result!['is_expense'] as bool) ? Colors.red.shade50 : Colors.green.shade50,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: (_result!['is_expense'] as bool) ? Colors.red.shade200 : Colors.green.shade200,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            (_result!['is_expense'] as bool) ? Icons.arrow_upward : Icons.arrow_downward,
+                            color: (_result!['is_expense'] as bool) ? Colors.red : Colors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            (_result!['is_expense'] as bool) ? 'Chiqim Operatsiyasi' : 'Kirim Operatsiyasi',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: (_result!['is_expense'] as bool) ? Colors.red.shade900 : Colors.green.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 16),
+                      Text('• Kimga/Kimdan: ${_result!['party']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      Text('• Summa: ${(_result!['amount'] as num).toInt()} so\'m', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: (_result!['is_expense'] as bool) ? Colors.red : Colors.green)),
+                      const SizedBox(height: 4),
+                      Text('• Toifa: ${_result!['category']}', style: const TextStyle(fontSize: 12)),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 42,
+                        child: FilledButton.icon(
+                          onPressed: _confirmAndCreate,
+                          icon: const Icon(Icons.check, size: 16),
+                          label: const Text('Kassa Amalini Saqlash', style: TextStyle(fontWeight: FontWeight.bold)),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: (_result!['is_expense'] as bool) ? Colors.red.shade700 : Colors.green.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// PLAGIN SOZLAMALARI DIALOGI (MOLIYA)
+// ============================================================================
+class FinancePluginConfigDialog extends StatefulWidget {
+  const FinancePluginConfigDialog({
+    super.key,
+    required this.plugin,
+    required this.pluginManager,
+    required this.onSaved,
+  });
+
+  final EcosystemPlugin plugin;
+  final PluginManager pluginManager;
+  final VoidCallback onSaved;
+
+  @override
+  State<FinancePluginConfigDialog> createState() => _FinancePluginConfigDialogState();
+}
+
+class _FinancePluginConfigDialogState extends State<FinancePluginConfigDialog> {
+  late final TextEditingController _limitController;
+
+  @override
+  void initState() {
+    super.initState();
+    final curLimit = widget.plugin.metadata['max_payout_limit'] ?? 3000000;
+    _limitController = TextEditingController(text: '$curLimit');
+  }
+
+  @override
+  void dispose() {
+    _limitController.dispose();
+    super.dispose();
+  }
+
+  void _save() async {
+    final val = double.tryParse(_limitController.text.trim()) ?? 3000000.0;
+    widget.plugin.metadata['max_payout_limit'] = val;
+    await widget.pluginManager.registerPlugin(widget.plugin);
+    if (mounted) {
+      Navigator.of(context).pop();
+      widget.onSaved();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.sync_alt, color: Colors.green),
+          const SizedBox(width: 8),
+          Expanded(child: Text(widget.plugin.name, style: const TextStyle(fontSize: 16))),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${widget.plugin.description}\n\nKPI orqali tasdiqlangan bonuslar avtomatik shu chegaragacha kassadan chiqim qilinadi.',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _limitController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Maksimal chiqim chegarasi (so\'m)',
+              suffixText: 'so\'m',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Bekor qilish'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Saqlash'),
+        ),
+      ],
+    );
+  }
+}
+
