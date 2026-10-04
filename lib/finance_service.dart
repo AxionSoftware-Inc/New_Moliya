@@ -162,7 +162,7 @@ class FinanceService {
               'note': const ParamDef(type: 'string', description: 'To\'lov izohi', required: false),
             },
             handler: (p) async {
-              final person = p['person'];
+              final person = p['id'] ?? p['person'] ?? p['name'];
               final debtEntity = store.find('$person') ??
                   store.filter(status: 'debt_active', predicate: (e) {
                     final match = UzbekNlp.matchEntity('$person', [e.name, '${e.meta['person']}']);
@@ -374,7 +374,7 @@ class FinanceService {
               'id': const ParamDef(type: 'string', description: 'Yozuv ID yoki nomi'),
             },
             handler: (p) async {
-              final key = p['id'];
+              final key = p['id'] ?? p['name'];
               final existing = store.find('$key');
               if (existing == null) return ToolResult.err(error: "'$key' moliyaviy yozuv topilmadi.");
 
